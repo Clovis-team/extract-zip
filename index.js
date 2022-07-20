@@ -7,6 +7,7 @@ const { promisify } = require('util')
 const stream = require('stream')
 const yauzl = require('yauzl')
 const chardet = require('chardet')
+var Iconv = require('iconv').Iconv
 
 const openZip = promisify(yauzl.open)
 const pipeline = promisify(stream.pipeline)
@@ -14,18 +15,21 @@ const pipeline = promisify(stream.pipeline)
 var cp437 = '\u0000☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ '
 function decodeBuffer (buffer, start, end, entryUtf8Flag) {
   const analyzedBufferEncoding = chardet.analyse(buffer)
-  let chardetIsUtf8 = false
-  // let isUtf8 = false
-  if (analyzedBufferEncoding.length > 0) {
-    debug(`analyzed encoding via chardet is ${analyzedBufferEncoding[0].name} confidence ${analyzedBufferEncoding[0].confidence}`)
+  const possibleUtf8Encoding = analyzedBufferEncoding.findIndex((guess) => guess.name === 'UTF-8')
+  // If the entry might be an utf8 with more than 70% of confidence, we assume it is utf8
+  // Without this condition, chardet often returns 'windows-1252' for utf8 files
+  if (entryUtf8Flag || (possibleUtf8Encoding > -1 && analyzedBufferEncoding[possibleUtf8Encoding].confidence > 70)) {
+    debug('decoding buffer as utf8')
+    return buffer.toString('utf8', start, end)
+    // If the entry is not utf8, we try to convert it to utf8 with the detected encoding
+  } else if (analyzedBufferEncoding.length > 0 && analyzedBufferEncoding[0].confidence > 70) {
+    debug(`analyzed encoding via chardet is ${analyzedBufferEncoding[0].name} confidence ${analyzedBufferEncoding[0].confidence} :: ${JSON.stringify(analyzedBufferEncoding)}`)
     // On MACOSX created archives doesn't contain the utf-8 encoding flag, making the classical yauzl encoding detection fail.
     // That's why we use chardet to detect the encoding and if it's not utf-8 we fallback to the yauzl default encoding.
-    if (analyzedBufferEncoding[0].name === 'UTF-8' && analyzedBufferEncoding[0].confidence > 90) {
-      chardetIsUtf8 = true
-    }
-  }
-  if (entryUtf8Flag || chardetIsUtf8) {
-    debug('decoding buffer as utf8')
+    debug('chardet detected encoding with big confidence, convert to utf8: ', analyzedBufferEncoding[0].name)
+    const converter = new Iconv('UTF-8', 'UTF-8//TRANSLIT//IGNORE')
+    buffer = converter.convert(buffer)
+    debug('converted buffer: ', buffer.toString('utf8'))
     return buffer.toString('utf8', start, end)
   } else {
     debug('decoding buffer as cp437')
@@ -44,7 +48,7 @@ class Extractor {
   }
 
   async extract () {
-    debug('opening', this.zipPath, 'with opts', this.opts)
+    // debug('opening', this.zipPath, 'with opts', this.opts)
 
     this.zipfile = await openZip(this.zipPath, { lazyEntries: true, decodeStrings: false })
     this.canceled = false
@@ -58,7 +62,7 @@ class Extractor {
 
       this.zipfile.on('close', () => {
         if (!this.canceled) {
-          debug('zip extraction complete')
+          // debug('zip extraction complete')
           resolve()
         }
       })
@@ -66,7 +70,7 @@ class Extractor {
       this.zipfile.on('entry', async entry => {
         /* istanbul ignore if */
         if (this.canceled) {
-          debug('skipping entry', entry.fileName, { cancelled: this.canceled })
+          // debug('skipping entry', entry.fileName, { cancelled: this.canceled })
           return
         }
 
@@ -75,7 +79,7 @@ class Extractor {
         const entryUtf8Flag = (entry.generalPurposeBitFlag & 0x800) !== 0
         entry.fileName = decodeBuffer(entry.fileName, 0, entry.fileNameLength, entryUtf8Flag)
         entry.comment = decodeBuffer(entry.comment, 0, entry.fileCommentLength, entryUtf8Flag)
-        debug('zipfile entry', entry.fileName)
+        // debug('zipfile entry', entry.fileName)
 
         if (entry.fileName.startsWith('__MACOSX/')) {
           this.zipfile.readEntry()
@@ -95,7 +99,7 @@ class Extractor {
           }
 
           await this.extractEntry(entry)
-          debug('finished processing', entry.fileName)
+          // debug('finished processing', entry.fileName)
           this.zipfile.readEntry()
         } catch (err) {
           this.canceled = true
@@ -109,7 +113,7 @@ class Extractor {
   async extractEntry (entry) {
     /* istanbul ignore if */
     if (this.canceled) {
-      debug('skipping entry extraction', entry.fileName, { cancelled: this.canceled })
+      // debug('skipping entry extraction', entry.fileName, { cancelled: this.canceled })
       return
     }
 
@@ -138,7 +142,7 @@ class Extractor {
     const madeBy = entry.versionMadeBy >> 8
     if (!isDir) isDir = (madeBy === 0 && entry.externalFileAttributes === 16)
 
-    debug('extracting entry', { filename: entry.fileName, isDir: isDir, isSymlink: symlink })
+    // debug('extracting entry', { filename: entry.fileName, isDir: isDir, isSymlink: symlink })
 
     const procMode = this.getExtractedMode(mode, isDir) & 0o777
 
@@ -149,16 +153,16 @@ class Extractor {
     if (isDir) {
       mkdirOptions.mode = procMode
     }
-    debug('mkdir', { dir: destDir, ...mkdirOptions })
+    // debug('mkdir', { dir: destDir, ...mkdirOptions })
     await fs.mkdir(destDir, mkdirOptions)
     if (isDir) return
 
-    debug('opening read stream', dest)
+    // debug('opening read stream', dest)
     const readStream = await promisify(this.zipfile.openReadStream.bind(this.zipfile))(entry)
 
     if (symlink) {
       const link = await getStream(readStream)
-      debug('creating symlink', link, dest)
+      // debug('creating symlink', link, dest)
       await fs.symlink(link, dest)
     } else {
       await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
@@ -193,7 +197,7 @@ class Extractor {
 }
 
 module.exports = async function (zipPath, opts) {
-  debug('creating target directory', opts.dir)
+  // debug('creating target directory', opts.dir)
 
   if (!path.isAbsolute(opts.dir)) {
     throw new Error('Target directory is expected to be absolute')

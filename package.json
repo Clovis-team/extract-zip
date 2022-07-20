@@ -32,9 +32,10 @@
     "node": ">= 10.17.0"
   },
   "dependencies": {
+    "chardet": "1.4.0",
     "debug": "^4.1.1",
     "get-stream": "^5.1.0",
-    "chardet": "1.4.0",
+    "iconv": "^3.0.1",
     "yauzl": "^2.10.0"
   },
   "optionalDependencies": {
