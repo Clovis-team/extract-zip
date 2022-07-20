@@ -6,9 +6,36 @@ const path = require('path')
 const { promisify } = require('util')
 const stream = require('stream')
 const yauzl = require('yauzl')
+const chardet = require('chardet')
 
 const openZip = promisify(yauzl.open)
 const pipeline = promisify(stream.pipeline)
+
+var cp437 = '\u0000☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ '
+function decodeBuffer (buffer, start, end, entryUtf8Flag) {
+  const analyzedBufferEncoding = chardet.analyse(buffer)
+  let chardetIsUtf8 = false
+  // let isUtf8 = false
+  if (analyzedBufferEncoding.length > 0) {
+    debug(`analyzed encoding via chardet is ${analyzedBufferEncoding[0].name} confidence ${analyzedBufferEncoding[0].confidence}`)
+    // On MACOSX created archives doesn't contain the utf-8 encoding flag, making the classical yauzl encoding detection fail.
+    // That's why we use chardet to detect the encoding and if it's not utf-8 we fallback to the yauzl default encoding.
+    if (analyzedBufferEncoding[0].name === 'UTF-8' && analyzedBufferEncoding[0].confidence > 90) {
+      chardetIsUtf8 = true
+    }
+  }
+  if (entryUtf8Flag || chardetIsUtf8) {
+    debug('decoding buffer as utf8')
+    return buffer.toString('utf8', start, end)
+  } else {
+    debug('decoding buffer as cp437')
+    var result = ''
+    for (var i = start; i < end; i++) {
+      result += cp437[buffer[i]]
+    }
+    return result
+  }
+}
 
 class Extractor {
   constructor (zipPath, opts) {
@@ -19,7 +46,7 @@ class Extractor {
   async extract () {
     debug('opening', this.zipPath, 'with opts', this.opts)
 
-    this.zipfile = await openZip(this.zipPath, { lazyEntries: true })
+    this.zipfile = await openZip(this.zipPath, { lazyEntries: true, decodeStrings: false })
     this.canceled = false
 
     return new Promise((resolve, reject) => {
@@ -43,6 +70,11 @@ class Extractor {
           return
         }
 
+        // We need to manually decode the entry name, because yauzl fail to properly decode it when passing OSX archives with
+        // specials characters in it.
+        const entryUtf8Flag = (entry.generalPurposeBitFlag & 0x800) !== 0
+        entry.fileName = decodeBuffer(entry.fileName, 0, entry.fileNameLength, entryUtf8Flag)
+        entry.comment = decodeBuffer(entry.comment, 0, entry.fileCommentLength, entryUtf8Flag)
         debug('zipfile entry', entry.fileName)
 
         if (entry.fileName.startsWith('__MACOSX/')) {

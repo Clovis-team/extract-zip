@@ -11,6 +11,9 @@ const subdirZip = path.join(__dirname, 'file-in-subdir-without-subdir-entry.zip'
 const symlinkDestZip = path.join(__dirname, 'symlink-dest.zip')
 const symlinkZip = path.join(__dirname, 'symlink.zip')
 const brokenZip = path.join(__dirname, 'broken.zip')
+const accentsWindowsWinrarZip = path.join(__dirname, 'accents_windows_winrar.zip')
+const accentsWindows7Zip = path.join(__dirname, 'accents_windows_7zip.zip')
+const accentsOsxNative = path.join(__dirname, 'accents_osx_native.zip')
 
 const relativeTarget = './cats'
 
@@ -43,6 +46,21 @@ async function assertPermissions (t, pathToCheck, expectedMode) {
 test('files', async t => {
   const dirPath = await tempExtract(t, 'files', catsZip)
   await pathExists(t, path.join(dirPath, 'cats', 'gJqEYBs.jpg'), 'file created')
+})
+
+test('windows winrar accents', async t => {
+  const dirPath = await tempExtract(t, 'windows_accents_winrar', accentsWindowsWinrarZip)
+  await pathExists(t, path.join(dirPath, 'Archive', 'àâæçéèêëïîôœùûüÿ'), 'directory created')
+})
+
+test('windows 7zip accents', async t => {
+  const dirPath = await tempExtract(t, 'window_accents_7zip', accentsWindows7Zip)
+  await pathExists(t, path.join(dirPath, 'Archive', 'àâæçéèêëïîôœùûüÿ'), 'directory created')
+})
+
+test('osx native accents', async t => {
+  const dirPath = await tempExtract(t, 'osx_accents_native', accentsOsxNative)
+  await pathExists(t, path.join(dirPath, 'Archive', 'àâæçéèêëïîôœùûüÿ'), 'directory created')
 })
 
 test('symlinks', async t => {

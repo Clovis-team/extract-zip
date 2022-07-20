@@ -34,6 +34,7 @@
   "dependencies": {
     "debug": "^4.1.1",
     "get-stream": "^5.1.0",
+    "chardet": "1.4.0",
     "yauzl": "^2.10.0"
   },
   "optionalDependencies": {
