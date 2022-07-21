@@ -7,7 +7,7 @@ const { promisify } = require('util')
 const stream = require('stream')
 const yauzl = require('yauzl')
 const chardet = require('chardet')
-var Iconv = require('iconv').Iconv
+var iconv = require('iconv-lite')
 
 const openZip = promisify(yauzl.open)
 const pipeline = promisify(stream.pipeline)
@@ -26,15 +26,11 @@ function decodeBuffer (buffer, start, end, entryUtf8Flag) {
     // On MACOSX created archives doesn't contain the utf-8 encoding flag, making the classical yauzl encoding detection fail.
     // That's why we use chardet to detect the encoding and if it's not utf-8 we fallback to the yauzl default encoding.
     debug('chardet detected encoding with big confidence, convert to utf8: ', analyzedBufferEncoding[0].name)
-    const converter = new Iconv(analyzedBufferEncoding[0].name, 'UTF-8//TRANSLIT//IGNORE')
-    buffer = converter.convert(buffer)
-    debug('converted buffer: ', buffer.toString('utf8'))
-    return buffer.toString('utf8')
+    debug('converted buffer: ', iconv.decode(buffer, 'utf8'))
+    return iconv.decode(buffer, analyzedBufferEncoding[0].name.toLowerCase())
   } else {
     debug('decoding buffer as cp437')
-    const converter = new Iconv('CP437', 'UTF-8//TRANSLIT//IGNORE')
-    buffer = converter.convert(buffer)
-    return buffer.toString('utf8')
+    return iconv.decode(buffer, 'cp437')
   }
 }
 

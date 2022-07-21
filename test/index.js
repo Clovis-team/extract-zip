@@ -66,7 +66,6 @@ test('osx native accents', async t => {
 
 test('osx with windows chars accents', async t => {
   const dirPath = await tempExtract(t, 'accents_osx_windows', accentsOsxWindowsZip)
-  console.log(dirPath)
   await pathExists(t, path.join(dirPath, '1. Data Room'), 'directory created')
   await pathExists(t, path.join(dirPath, '1. Data Room', '000 - Plans et surfaces Existant'), 'directory created')
   await pathExists(t, path.join(dirPath, '1. Data Room', '001 - DTA & Sécurité'), 'directory created')
